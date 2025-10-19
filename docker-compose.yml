@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: job_queue_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - job_queue_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: job_queue_api
+    command: ruby api.rb
+    ports:
+      - "4567:4567"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - API_PORT=4567
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - job_queue_net
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  # Generic worker that can be scaled
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - WORKER_ID=worker-${COMPOSE_SERVICE_NUMBER:-1}
+      - MAX_THREADS=2
+      - POLL_INTERVAL=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - job_queue_net
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  # Specialized worker for hotel/flight tags
+  worker_hotel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: job_queue_worker_hotel
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - WORKER_ID=worker-hotel
+      - MAX_THREADS=2
+      - WORKER_TAGS=hotel,flight
+      - POLL_INTERVAL=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - job_queue_net
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+networks:
+  job_queue_net:
+    driver: bridge
+
+volumes:
+  redis_data:

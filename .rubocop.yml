@@ -1,0 +1,26 @@
+AllCops:
+  TargetRubyVersion: 3.2
+  Exclude:
+    - 'Gemfile'
+    - 'bin/**/*'
+
+Style/Documentation:
+  Enabled: true
+
+Metrics/MethodLength:
+  Enabled: false
+
+Metrics/ClassLength:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/AbcSize:
+  Enabled: false
+
+Layout/LineLength:
+  Max: 120
+
+Lint/UnreachableLoop:
+  Enabled: false
