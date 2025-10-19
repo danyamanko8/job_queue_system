@@ -119,7 +119,7 @@ class Worker
     @queue.mark_processing(job)
     @logger.info("Worker #{@worker_id} executing job #{job.id} with tags: #{job.tags.join(', ')}")
 
-    sleep(rand(20..30))
+    sleep(rand(0..3)) # Simulate job processing time
 
     @queue.mark_completed(job)
     @logger.info("Worker #{@worker_id} completed job #{job.id} with tags: #{job.tags.join(', ')}")
