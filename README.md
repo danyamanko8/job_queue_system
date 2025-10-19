@@ -379,8 +379,3 @@ bundle exec rubocop lib/
 # Fix code style
 bundle exec rubocop -A lib/
 ```
-
-## License
-
-MIT
-```
