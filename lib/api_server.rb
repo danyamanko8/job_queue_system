@@ -6,6 +6,7 @@ require_relative 'job_queue'
 require_relative 'job'
 require_relative 'app_logger'
 
+# APIServer - RESTful API server for job queue management
 class APIServer < Sinatra::Base
   set :port, ENV['API_PORT'] || 4567
   set :bind, '0.0.0.0'

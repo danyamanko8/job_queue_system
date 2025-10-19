@@ -6,23 +6,35 @@ require_relative 'app_logger'
 
 # Command-line interface for job queue management
 class CLI
+  COMMANDS = {
+    add: {
+      handler: :handle_add,
+      description: 'Create a new job'
+    },
+    list: {
+      handler: :handle_list,
+      description: 'List all jobs in queue'
+    },
+    status: {
+      handler: :handle_status,
+      description: 'Get job status'
+    },
+    help: {
+      handler: :print_help,
+      description: 'Show this help message'
+    }
+  }.freeze
+
   def initialize
     @queue = JobQueue.new
     @logger = AppLogger.new
   end
 
   def run(args)
-    command = args.shift
+    command = args.shift&.to_sym
 
-    case command
-    when 'add'
-      handle_add(args)
-    when 'list'
-      handle_list
-    when 'status'
-      handle_status(args)
-    when 'help'
-      print_help
+    if COMMANDS.key?(command)
+      send(COMMANDS[command][:handler], args)
     else
       puts "Unknown command: #{command}"
       print_help
@@ -49,7 +61,7 @@ class CLI
       when '--data'
         begin
           data = JSON.parse(args[i + 1]) if args[i + 1]
-        rescue JSON::ParseError
+        rescue JSON::ParserError
           puts 'Invalid JSON data'
         end
         i += 2
@@ -109,15 +121,17 @@ class CLI
       Usage: ruby cli.rb COMMAND [OPTIONS]
 
       Commands:
-        add         Create a new job
-                    --tags TAG1,TAG2  (comma-separated tags)
-                    --data JSON       (optional JSON data)
-      #{'  '}
-        list        List all jobs in queue
-      #{'  '}
-        status ID   Get job status
-      #{'  '}
-        help        Show this help message
+    HELP
+
+    COMMANDS.each do |cmd, info|
+      puts "  #{cmd.to_s.ljust(12)} #{info[:description]}"
+    end
+
+    puts <<~HELP
+
+      Options:
+        --tags TAG1,TAG2  (comma-separated tags)
+        --data JSON       (optional JSON data)
 
       Examples:
         ruby cli.rb add --tags hotel,flight

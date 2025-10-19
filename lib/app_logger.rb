@@ -4,6 +4,13 @@ require 'time'
 
 # AppLogger is a simple thread-safe logger for application logging.
 class AppLogger
+  LEVELS = {
+    debug: 'DEBUG',
+    info: 'INFO',
+    warn: 'WARN',
+    error: 'ERROR'
+  }.freeze
+
   def initialize(output = $stdout)
     @output = output
     @mutex = Mutex.new
@@ -17,8 +24,9 @@ class AppLogger
     end
   end
 
-  def info(message) = log(message, 'INFO')
-  def error(message) = log(message, 'ERROR')
-  def warn(message) = log(message, 'WARN')
-  def debug(message) = log(message, 'DEBUG')
+  LEVELS.each do |method_name, level|
+    define_method(method_name) do |message|
+      log(message, level)
+    end
+  end
 end

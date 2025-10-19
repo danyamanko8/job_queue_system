@@ -8,7 +8,6 @@ require_relative 'app_logger'
 class JobQueue
   JOBS_KEY = 'jobs:queue'
   JOB_DATA_KEY_PREFIX = 'job:data:'
-  JOB_STATUS_KEY_PREFIX = 'job:status:'
   PROCESSING_JOBS_KEY = 'jobs:processing'
   ACTIVE_TAGS_KEY = 'tags:active'
 
@@ -20,66 +19,46 @@ class JobQueue
   def enqueue(job)
     raise ArgumentError, 'Job must be a Job instance' unless job.is_a?(Job)
 
-    job_json = job.to_json
+    save_job(job)
     @redis.rpush(JOBS_KEY, job.id)
-    @redis.set("#{JOB_DATA_KEY_PREFIX}#{job.id}", job_json)
     @logger.log("Job enqueued: #{job.id} with tags #{job.tags}")
     job
   end
 
   def dequeue
     job_id = @redis.lpop(JOBS_KEY)
-    return nil unless job_id
+    return unless job_id
 
-    job_data = @redis.get("#{JOB_DATA_KEY_PREFIX}#{job_id}")
-    return nil unless job_data
-
-    Job.from_json(job_data)
+    fetch_job(job_id)
   end
 
   def peek
     job_id = @redis.lindex(JOBS_KEY, 0)
-    return nil unless job_id
+    return unless job_id
 
-    job_data = @redis.get("#{JOB_DATA_KEY_PREFIX}#{job_id}")
-    return nil unless job_data
-
-    Job.from_json(job_data)
+    fetch_job(job_id)
   end
 
   def mark_processing(job)
     job.mark_processing
     @redis.sadd(PROCESSING_JOBS_KEY, job.id)
     job.tags.each { |tag| @redis.sadd(ACTIVE_TAGS_KEY, tag) }
-    update_job(job)
+    save_job(job)
     @logger.log("Job started processing: #{job.id}")
   end
 
   def mark_completed(job)
-    job.mark_completed
-    @redis.srem(PROCESSING_JOBS_KEY, job.id)
-    update_job(job)
-    cleanup_tags
+    update_job_status(job) { job.mark_completed }
     @logger.log("Job completed: #{job.id}")
   end
 
   def mark_failed(job, error_message)
-    job.mark_failed(error_message)
-    @redis.srem(PROCESSING_JOBS_KEY, job.id)
-    update_job(job)
-    cleanup_tags
+    update_job_status(job) { job.mark_failed(error_message) }
     @logger.log("Job failed: #{job.id} - #{error_message}")
   end
 
-  def update_job(job)
-    @redis.set("#{JOB_DATA_KEY_PREFIX}#{job.id}", job.to_json)
-  end
-
   def get_job(job_id)
-    job_data = @redis.get("#{JOB_DATA_KEY_PREFIX}#{job_id}")
-    return nil unless job_data
-
-    Job.from_json(job_data)
+    fetch_job(job_id)
   end
 
   def active_tags
@@ -95,32 +74,45 @@ class JobQueue
   end
 
   def all_jobs
-    job_ids = @redis.lrange(JOBS_KEY, 0, -1)
-    job_ids.map do |id|
-      job_data = @redis.get("#{JOB_DATA_KEY_PREFIX}#{id}")
-      Job.from_json(job_data) if job_data
-    end.compact
-  end
-
-  def cleanup_tags
-    processing_ids = @redis.smembers(PROCESSING_JOBS_KEY)
-    all_tags = Set.new
-
-    processing_ids.each do |job_id|
-      job_data = @redis.get("#{JOB_DATA_KEY_PREFIX}#{job_id}")
-      if job_data
-        job = Job.from_json(job_data)
-        job.tags.each { |tag| all_tags.add(tag) }
-      end
-    end
-
-    current_tags = @redis.smembers(ACTIVE_TAGS_KEY)
-    (current_tags - all_tags.to_a).each do |tag|
-      @redis.srem(ACTIVE_TAGS_KEY, tag)
-    end
+    @redis.lrange(JOBS_KEY, 0, -1).filter_map { |id| fetch_job(id) }
   end
 
   def close
     @redis.close
+  end
+
+  private
+
+  def fetch_job(job_id)
+    job_data = @redis.get(job_key(job_id))
+    Job.from_json(job_data) if job_data
+  end
+
+  def save_job(job)
+    @redis.set(job_key(job.id), job.to_json)
+  end
+
+  def job_key(job_id)
+    "#{JOB_DATA_KEY_PREFIX}#{job_id}"
+  end
+
+  def update_job_status(job)
+    yield
+    @redis.srem(PROCESSING_JOBS_KEY, job.id)
+    save_job(job)
+    cleanup_tags
+  end
+
+  def cleanup_tags
+    processing_ids = @redis.smembers(PROCESSING_JOBS_KEY)
+    active_job_tags = processing_ids.each_with_object(Set.new) do |job_id, tags|
+      job = fetch_job(job_id)
+      job&.tags&.each { |tag| tags.add(tag) }
+    end
+
+    current_tags = @redis.smembers(ACTIVE_TAGS_KEY)
+    (current_tags - active_job_tags.to_a).each do |tag|
+      @redis.srem(ACTIVE_TAGS_KEY, tag)
+    end
   end
 end

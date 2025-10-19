@@ -26,9 +26,8 @@ RSpec.describe Worker do
       job_match = Job.new(tags: %w[hotel booking])
       job_no_match = Job.new(tags: ['payment'])
 
-      # allowed_tags_match? повертає true якщо дія НЕ має потрібних тегів
-      expect(worker_with_tags.send(:allowed_tags_match?, job_no_match)).to be true
-      expect(worker_with_tags.send(:allowed_tags_match?, job_match)).to be false
+      expect(worker_with_tags.send(:allowed_tags_mismatch?, job_match)).to be false
+      expect(worker_with_tags.send(:allowed_tags_mismatch?, job_no_match)).to be true
     end
   end
 
